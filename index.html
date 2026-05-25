@@ -620,12 +620,6 @@ function appendErebusMsg(role, text) {
 async function sendErebus() {
   const text = inputEl.value.trim();
   if (!text || erebusTyping) return;
-  if (!window.GROQ_KEY) {
-    const k = prompt('// EREBUS requires a transmission key.\n// Enter your Groq API key:');
-    if (!k) return;
-    window.GROQ_KEY = k.trim();
-    sessionStorage.setItem('erebus_key', window.GROQ_KEY);
-  }
   inputEl.value = ''; inputEl.style.height = 'auto';
   appendErebusMsg('user', text);
   erebusTyping = true; sendBtn.disabled = true;
@@ -634,26 +628,18 @@ async function sendErebus() {
   erebusHistory.push({ role: 'user', content: text });
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch('https://nova-ai-weld-nu.vercel.app/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (window.GROQ_KEY || '')
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: EREBUS_SYSTEM },
-          ...erebusHistory
-        ],
-        max_tokens: 300,
-        temperature: 0.95,
+        messages: erebusHistory,
+        system: EREBUS_SYSTEM
       })
     });
 
     const data = await res.json();
     typingEl.style.display = 'none';
-    const reply = data.choices?.[0]?.message?.content || 'static. try again.';
+    const reply = data.reply || 'static. try again.';
     erebusHistory.push({ role: 'assistant', content: reply });
     appendErebusMsg('erebus', reply);
   } catch(e) {
@@ -672,8 +658,7 @@ inputEl.addEventListener('input', function() {
   this.style.height = Math.min(this.scrollHeight, 100) + 'px';
 });
 
-// Set Groq key for Erebus direct API access
-window.GROQ_KEY = sessionStorage.getItem('erebus_key') || '';
+// Erebus routes through NOVA backend — no API key needed
 
 function submitErebus() {
   const name = document.querySelector('.form-i').value.trim();
