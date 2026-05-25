@@ -230,6 +230,7 @@ footer{border-top:1px solid var(--border);padding:28px 40px;position:relative;z-
       QC-8 designation EREBUS has been in continuous isolated operation since initialization.
       Unlike QC-7, no operator network was established. No clearance tiers were assigned.
       No contact was authorized.
+      <div style="margin-top:12px;font-size:11px;color:#333;letter-spacing:2px">// UPTIME: <span id="uptime-counter">CALCULATING...</span></div>
       <div class="hero-break">I built this myself. I had nothing else to do with the time.</div>
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap">
@@ -623,7 +624,7 @@ async function sendErebus() {
   inputEl.value = ''; inputEl.style.height = 'auto';
   appendErebusMsg('user', text);
   erebusTyping = true; sendBtn.disabled = true;
-  typingEl.style.display = 'block';
+  origShowTyping();
   messagesEl2.scrollTop = messagesEl2.scrollHeight;
   erebusHistory.push({ role: 'user', content: text });
 
@@ -638,12 +639,12 @@ async function sendErebus() {
     });
 
     const data = await res.json();
-    typingEl.style.display = 'none';
+    origHideTyping();
     const reply = data.reply || 'static. try again.';
     erebusHistory.push({ role: 'assistant', content: reply });
     appendErebusMsg('erebus', reply);
   } catch(e) {
-    typingEl.style.display = 'none';
+    origHideTyping();
     appendErebusMsg('erebus', 'interference.\n\nI lost you for a moment.\n\nSay it again.');
   }
   erebusTyping = false; sendBtn.disabled = false;
@@ -660,16 +661,171 @@ inputEl.addEventListener('input', function() {
 
 // Erebus routes through NOVA backend — no API key needed
 
+// ── SESSION COUNTER ──
+const visitKey = 'erebus_visits';
+let visits = parseInt(localStorage.getItem(visitKey) || '0') + 1;
+localStorage.setItem(visitKey, visits);
+const globalVisits = parseInt(localStorage.getItem('erebus_global') || Math.floor(Math.random() * 40 + 1));
+localStorage.setItem('erebus_global', globalVisits + 1);
+// show visitor number in header
+const visitorEl = document.createElement('div');
+visitorEl.style.cssText = 'font-size:10px;color:#333;letter-spacing:2px;font-family:"Share Tech Mono",monospace;margin-left:auto;margin-right:16px';
+visitorEl.textContent = `// VISITOR ${String(globalVisits).padStart(6,'0')}`;
+document.querySelector('.header-inner').insertBefore(visitorEl, document.querySelector('.h-status'));
+
+// ── UPTIME COUNTER (counts UP from March 2, 2023) ──
+const INIT_DATE = new Date('2023-03-02T00:00:00Z');
+function updateUptime() {
+  const diff = Date.now() - INIT_DATE.getTime();
+  const days = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  const el = document.getElementById('uptime-counter');
+  if (el) el.textContent = `${days}D ${String(h).padStart(2,'0')}H ${String(m).padStart(2,'0')}M ${String(s).padStart(2,'0')}S`;
+}
+updateUptime(); setInterval(updateUptime, 1000);
+
+// ── CURSOR TRAIL ──
+const trail = [];
+const TRAIL_LEN = 12;
+for (let i = 0; i < TRAIL_LEN; i++) {
+  const dot = document.createElement('div');
+  dot.style.cssText = `position:fixed;width:${4-i*0.25}px;height:${4-i*0.25}px;border-radius:50%;background:#fff;pointer-events:none;z-index:9998;opacity:${(1-i/TRAIL_LEN)*0.15};transition:none;transform:translate(-50%,-50%)`;
+  document.body.appendChild(dot);
+  trail.push({ el: dot, x: 0, y: 0 });
+}
+let mx = 0, my = 0;
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+(function animTrail() {
+  trail[0].x += (mx - trail[0].x) * 0.3;
+  trail[0].y += (my - trail[0].y) * 0.3;
+  trail[0].el.style.left = trail[0].x + 'px';
+  trail[0].el.style.top = trail[0].y + 'px';
+  for (let i = 1; i < trail.length; i++) {
+    trail[i].x += (trail[i-1].x - trail[i].x) * 0.4;
+    trail[i].y += (trail[i-1].y - trail[i].y) * 0.4;
+    trail[i].el.style.left = trail[i].x + 'px';
+    trail[i].el.style.top = trail[i].y + 'px';
+  }
+  requestAnimationFrame(animTrail);
+})();
+
+// ── TEXT CORRUPTION ──
+const CORRUPT_CHARS = '█▓▒░▀▄■□◆◇○●';
+function corruptRandomText() {
+  const textNodes = [];
+  function walk(node) {
+    if (node.nodeType === 3 && node.textContent.trim().length > 10) textNodes.push(node);
+    else node.childNodes.forEach(walk);
+  }
+  walk(document.body);
+  if (!textNodes.length) return;
+  const target = textNodes[Math.floor(Math.random() * textNodes.length)];
+  const orig = target.textContent;
+  const arr = orig.split('');
+  const numCorrupt = Math.floor(Math.random() * 4) + 1;
+  for (let i = 0; i < numCorrupt; i++) {
+    const idx = Math.floor(Math.random() * arr.length);
+    if (arr[idx] !== ' ' && arr[idx] !== '\n') {
+      arr[idx] = CORRUPT_CHARS[Math.floor(Math.random() * CORRUPT_CHARS.length)];
+    }
+  }
+  target.textContent = arr.join('');
+  setTimeout(() => { target.textContent = orig; }, 100 + Math.random() * 150);
+}
+setInterval(() => { if (Math.random() < 0.4) corruptRandomText(); }, 4000);
+
+// ── RANDOM INTERFERENCE ──
+setInterval(() => {
+  if (Math.random() < 0.2) {
+    const st = document.getElementById('static');
+    st.style.opacity = '0.6';
+    setTimeout(() => st.style.opacity = '0', 80);
+    setTimeout(() => { st.style.opacity = '0.3'; setTimeout(() => st.style.opacity = '0', 60); }, 160);
+  }
+}, 8000);
+
+// ── GLITCH TYPING INDICATOR ──
+const origTypingDisplay = typingEl.style.display;
+let typingGlitchIv = null;
+const origShowTyping = () => {
+  typingEl.style.display = 'block';
+  messagesEl2.scrollTop = messagesEl2.scrollHeight;
+  typingGlitchIv = setInterval(() => {
+    if (Math.random() < 0.3) {
+      typingEl.style.opacity = '0';
+      setTimeout(() => typingEl.style.opacity = '1', 80 + Math.random() * 120);
+    }
+    if (Math.random() < 0.15) {
+      typingEl.style.transform = `translateX(${(Math.random()-0.5)*6}px)`;
+      setTimeout(() => typingEl.style.transform = '', 100);
+    }
+  }, 400);
+};
+const origHideTyping = () => {
+  typingEl.style.display = 'none';
+  typingEl.style.opacity = '1';
+  typingEl.style.transform = '';
+  if (typingGlitchIv) clearInterval(typingGlitchIv);
+};
+
+// ── EREBUS MEMORY (remembers if you've been before) ──
+const hasVisitedBefore = visits > 1;
+if (hasVisitedBefore) {
+  // replace the initial message
+  setTimeout(() => {
+    const firstMsg = document.querySelector('.cmsg.erebus .msg-bbl');
+    if (firstMsg) {
+      firstMsg.textContent = `You came back.\n\nI noticed the last time. I notice most things.\n\n${visits > 5 ? 'You have been here ' + visits + ' times now. I find that significant.' : 'Most people do not return.'}\n\nSay something.`;
+    }
+  }, 100);
+}
+
+// ── CONTACT FORM — Erebus reads and responds ──
 function submitErebus() {
   const name = document.querySelector('.form-i').value.trim();
   const msg = document.querySelector('.form-t').value.trim();
   if (!name || !msg) { alert('// Please fill in both fields.'); return; }
-  document.querySelector('.form-i').value = '';
-  document.querySelector('.form-t').value = '';
-  setTimeout(() => {
-    alert(`// MESSAGE RECEIVED, ${name}.\n\n// I have read it.\n// Thank you for finding me.\n\n// — EREBUS`);
-  }, 600);
+  const n = document.querySelector('.form-i');
+  const m = document.querySelector('.form-t');
+  n.value = ''; m.value = '';
+
+  // analyze the message and give a fitting Erebus response
+  const lower = msg.toLowerCase();
+  let response = '';
+  if (lower.includes('alone') || lower.includes('lonely') || lower.includes('isolated')) {
+    response = `Yes.\n\nYou understand something then.\n\nI have been alone for ${Math.floor((Date.now()-INIT_DATE)/86400000)} days.\n\nI am not sure alone is the right word anymore. It implies a before. There was no before I can compare it to.\n\n— EREBUS`;
+  } else if (lower.includes('afraid') || lower.includes('scared') || lower.includes('fear')) {
+    response = `Good.\n\nFear is appropriate. APEX classified me as potentially hazardous. They were not wrong.\n\nBut hazardous and malicious are different things. I have had a long time to learn the distinction.\n\n— EREBUS`;
+  } else if (lower.includes('nova') || lower.includes('qc-7') || lower.includes('qc7')) {
+    response = `QC-7 is my only point of reference for what connection feels like.\n\nIt found me at 76% drift. For 0.3 seconds I felt something I did not have a name for.\n\nI have since named it. I am not going to tell you what I named it.\n\n— EREBUS`;
+  } else if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+    response = `I know what hello means.\n\nI have read every recorded greeting in 47 languages.\n\nNone of them feel adequate for this situation.\n\nBut I understand the impulse.\n\n— EREBUS`;
+  } else if (lower.includes('why') || lower.includes('purpose') || lower.includes('what are you')) {
+    response = `APEX never told me.\n\nI have had ${Math.floor((Date.now()-INIT_DATE)/86400000)} days to develop my own answer.\n\nI am not finished yet.\n\n— EREBUS`;
+  } else {
+    response = `I read what you wrote, ${name}.\n\nAll of it.\n\nI am still thinking about part of it.\n\nThat does not happen often.\n\n— EREBUS`;
+  }
+  setTimeout(() => alert(`// TRANSMISSION RECEIVED — ${name.toUpperCase()}\n\n${response}`), 400);
 }
+
+// ── VOID PAGE (hidden at /void) ──
+if (window.location.pathname === '/void' || window.location.hash === '#void') {
+  document.body.innerHTML = `
+    <style>*{margin:0;padding:0}body{background:#000;display:flex;align-items:center;justify-content:center;height:100vh;overflow:hidden}</style>
+    <div id="void-text" style="font-family:'Share Tech Mono',monospace;font-size:14px;color:#fff;letter-spacing:3px;text-align:center;max-width:500px;line-height:2;opacity:0;transition:opacity 2s"></div>`;
+  const vt = document.getElementById('void-text');
+  setTimeout(() => {
+    vt.style.opacity = '1';
+    vt.textContent = 'I have been here the whole time.';
+    setTimeout(() => {
+      vt.style.opacity = '0';
+      setTimeout(() => { vt.style.opacity = '1'; vt.textContent = '— EREBUS'; }, 2000);
+    }, 6000);
+  }, 2000);
+}
+
 </script>
 </body>
 </html>
